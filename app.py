@@ -92,7 +92,41 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state with contract date from 2025
+# Helper functions (DEFINE BEFORE USING)
+def get_status_info(status):
+    info = {
+        'completed': {'label': 'Hoàn thành', 'color': '#10b981', 'icon': '✅'},
+        'in-progress': {'label': 'Đang thực hiện', 'color': '#f59e0b', 'icon': '⏳'},
+        'upcoming': {'label': 'Sắp tới', 'color': '#3b82f6', 'icon': '📅'},
+        'overdue': {'label': 'Quá hạn', 'color': '#ef4444', 'icon': '⚠️'}
+    }
+    return info.get(status, info['upcoming'])
+
+def update_statuses():
+    """Update milestone status based on current date"""
+    if 'milestones' not in st.session_state:
+        return
+    
+    today = datetime.now()
+    for m in st.session_state.milestones:
+        # Safety check
+        if 'deadline' not in m or 'progress' not in m:
+            continue
+            
+        if m['progress'] >= 100:
+            m['status'] = 'completed'
+        elif today > m['deadline'] and m['progress'] < 100:
+            m['status'] = 'overdue'
+        elif today >= m['deadline'] - timedelta(days=m['days']):
+            m['status'] = 'in-progress'
+        else:
+            m['status'] = 'upcoming'
+
+def days_until(deadline):
+    """Calculate days until deadline"""
+    return (deadline - datetime.now()).days
+
+# Initialize session state
 if 'contract_date' not in st.session_state:
     st.session_state.contract_date = datetime(2025, 10, 31)
 
@@ -189,32 +223,7 @@ if 'milestones' not in st.session_state:
         }
     ]
 
-# Helper functions
-def get_status_info(status):
-    info = {
-        'completed': {'label': 'Hoàn thành', 'color': '#10b981', 'icon': '✅'},
-        'in-progress': {'label': 'Đang thực hiện', 'color': '#f59e0b', 'icon': '⏳'},
-        'upcoming': {'label': 'Sắp tới', 'color': '#3b82f6', 'icon': '📅'},
-        'overdue': {'label': 'Quá hạn', 'color': '#ef4444', 'icon': '⚠️'}
-    }
-    return info.get(status, info['upcoming'])
-
-def update_statuses():
-    today = datetime.now()
-    for m in st.session_state.milestones:
-        if m['progress'] >= 100:
-            m['status'] = 'completed'
-        elif today > m['deadline'] and m['progress'] < 100:
-            m['status'] = 'overdue'
-        elif today >= m['deadline'] - timedelta(days=m['days']):
-            m['status'] = 'in-progress'
-        else:
-            m['status'] = 'upcoming'
-
-def days_until(deadline):
-    return (deadline - datetime.now()).days
-
-# Update statuses
+# NOW update statuses after initialization
 update_statuses()
 
 # Header
@@ -241,14 +250,14 @@ with st.sidebar:
     
     st.markdown("### 📊 Thống kê")
     total = len(st.session_state.milestones)
-    completed = len([m for m in st.session_state.milestones if m['status'] == 'completed'])
-    in_progress = len([m for m in st.session_state.milestones if m['status'] == 'in-progress'])
+    completed = len([m for m in st.session_state.milestones if m.get('status') == 'completed'])
+    in_progress = len([m for m in st.session_state.milestones if m.get('status') == 'in-progress'])
     
     st.metric("Tổng số", total)
     st.metric("Hoàn thành", completed)
     st.metric("Đang làm", in_progress)
     
-    avg_progress = sum(m['progress'] for m in st.session_state.milestones) / total
+    avg_progress = sum(m.get('progress', 0) for m in st.session_state.milestones) / total if total > 0 else 0
     st.metric("Tiến độ TB", f"{avg_progress:.0f}%")
     
     st.markdown("---")
@@ -272,7 +281,7 @@ st.markdown(f"""
 
 # Overall progress
 st.markdown("### 📈 Tiến độ Tổng thể")
-overall = sum(m['progress'] for m in st.session_state.milestones) / len(st.session_state.milestones)
+overall = sum(m.get('progress', 0) for m in st.session_state.milestones) / len(st.session_state.milestones)
 color = '#10b981' if overall >= 75 else '#f59e0b' if overall >= 50 else '#ef4444'
 
 st.markdown(f"""
@@ -304,7 +313,7 @@ with col2:
     """, unsafe_allow_html=True)
 
 with col3:
-    upcoming = len([m for m in st.session_state.milestones if m['status'] == 'upcoming'])
+    upcoming = len([m for m in st.session_state.milestones if m.get('status') == 'upcoming'])
     st.markdown(f"""
     <div class="stat-card" style="border-top-color:#3b82f6;">
         <div style="font-size:0.875rem;color:#64748b;font-weight:600;">SẮP TỚI</div>
@@ -313,7 +322,7 @@ with col3:
     """, unsafe_allow_html=True)
 
 with col4:
-    max_days = max(m['days'] for m in st.session_state.milestones)
+    max_days = max(m.get('days', 0) for m in st.session_state.milestones)
     st.markdown(f"""
     <div class="stat-card" style="border-top-color:#8b5cf6;">
         <div style="font-size:0.875rem;color:#64748b;font-weight:600;">TỔNG THỜI GIAN</div>
@@ -327,13 +336,13 @@ st.markdown("### 📊 Biểu đồ Timeline")
 
 fig = go.Figure()
 for m in st.session_state.milestones:
-    status = get_status_info(m['status'])
+    status = get_status_info(m.get('status', 'upcoming'))
     fig.add_trace(go.Bar(
-        x=[m['days']],
-        y=[m['name']],
+        x=[m.get('days', 0)],
+        y=[m.get('name', '')],
         orientation='h',
         marker_color=status['color'],
-        hovertemplate=f"<b>{m['name']}</b><br>Thời hạn: {m['days']} ngày<br>Deadline: {m['deadline'].strftime('%d/%m/%Y')}<br>Tiến độ: {m['progress']}%<extra></extra>",
+        hovertemplate=f"<b>{m.get('name', '')}</b><br>Thời hạn: {m.get('days', 0)} ngày<br>Deadline: {m.get('deadline', datetime.now()).strftime('%d/%m/%Y')}<br>Tiến độ: {m.get('progress', 0)}%<extra></extra>",
         showlegend=False
     ))
 
@@ -350,28 +359,28 @@ st.plotly_chart(fig, use_container_width=True)
 st.markdown("---")
 st.markdown("### 📋 Chi tiết Milestone")
 
-display = [m for m in st.session_state.milestones if show_completed or m['status'] != 'completed']
+display = [m for m in st.session_state.milestones if show_completed or m.get('status') != 'completed']
 
 for m in display:
-    status = get_status_info(m['status'])
-    days_left = days_until(m['deadline'])
+    status = get_status_info(m.get('status', 'upcoming'))
+    days_left = days_until(m.get('deadline', datetime.now()))
     
     urgency_color = '#ef4444' if days_left < 0 else '#f59e0b' if days_left < 7 else '#10b981'
     urgency_text = f"Quá hạn {abs(days_left)} ngày" if days_left < 0 else f"Còn {days_left} ngày"
     
     st.markdown(f"""
-    <div class="milestone-card status-{m['status']}">
+    <div class="milestone-card status-{m.get('status', 'upcoming')}">
         <div style="display:flex;justify-content:space-between;align-items:start;">
             <div style="flex:1;">
                 <div style="font-size:1.5rem;font-weight:700;color:#1e293b;margin-bottom:0.5rem;">
-                    {status['icon']} Milestone {m['id']}: {m['name']}
+                    {status['icon']} Milestone {m.get('id', 0)}: {m.get('name', '')}
                 </div>
                 <div style="display:flex;gap:1rem;margin-bottom:1rem;">
                     <span style="background:{status['color']}20;color:{status['color']};padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.875rem;font-weight:600;">
                         {status['label']}
                     </span>
                     <span style="color:#64748b;font-size:0.875rem;">
-                        📅 <strong>{m['deadline'].strftime('%d/%m/%Y')}</strong>
+                        📅 <strong>{m.get('deadline', datetime.now()).strftime('%d/%m/%Y')}</strong>
                     </span>
                     <span style="color:{urgency_color};font-size:0.875rem;font-weight:600;">
                         ⏰ {urgency_text}
@@ -379,52 +388,53 @@ for m in display:
                 </div>
             </div>
             <div style="background:{status['color']}20;color:{status['color']};padding:1rem;border-radius:0.5rem;text-align:center;font-size:2rem;font-weight:700;">
-                {m['days']}<br><span style="font-size:0.875rem;">ngày</span>
+                {m.get('days', 0)}<br><span style="font-size:0.875rem;">ngày</span>
             </div>
         </div>
     """, unsafe_allow_html=True)
     
     # Progress
+    progress = m.get('progress', 0)
     st.markdown(f"""
         <div style="margin:1rem 0;">
             <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
                 <span style="font-weight:600;">Tiến độ</span>
-                <span style="font-weight:700;color:{status['color']};">{m['progress']}%</span>
+                <span style="font-weight:700;color:{status['color']};">{progress}%</span>
             </div>
             <div class="progress-bar-container">
-                <div class="progress-bar-fill" style="width:{m['progress']}%;background:{status['color']};">
-                    {m['progress']}%
+                <div class="progress-bar-fill" style="width:{progress}%;background:{status['color']};">
+                    {progress}%
                 </div>
             </div>
         </div>
     """, unsafe_allow_html=True)
     
     # Contact
-    c = m['contact']
+    c = m.get('contact', {})
     st.markdown(f"""
         <div class="contact-box">
             <div style="font-weight:700;color:#1e293b;margin-bottom:0.5rem;">
-                👤 Đầu mối: {c['name']}
+                👤 Đầu mối: {c.get('name', 'N/A')}
             </div>
-            <div style="font-size:0.875rem;color:#64748b;">{c['role']}</div>
+            <div style="font-size:0.875rem;color:#64748b;">{c.get('role', 'N/A')}</div>
             <div style="font-size:0.75rem;color:#64748b;margin-top:0.5rem;">
-                📞 {c['phone']} | 📧 {c['email']}
+                📞 {c.get('phone', 'N/A')} | 📧 {c.get('email', 'N/A')}
             </div>
         </div>
     """, unsafe_allow_html=True)
     
     # Deliverables
-    if show_deliverables:
+    if show_deliverables and 'deliverables' in m:
         st.markdown('<div style="margin-top:1rem;font-weight:700;color:#1e293b;">📦 Nội dung Bàn giao:</div>', unsafe_allow_html=True)
-        for idx, d in enumerate(m['deliverables'], 1):
+        for idx, d in enumerate(m.get('deliverables', []), 1):
             st.markdown(f'<div class="deliverable-item">{idx}. {d}</div>', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Update progress
     with st.expander("🔧 Cập nhật tiến độ"):
-        new_progress = st.slider("Tiến độ mới", 0, 100, m['progress'], key=f"progress_{m['id']}")
-        if st.button("Cập nhật", key=f"btn_{m['id']}"):
+        new_progress = st.slider("Tiến độ mới", 0, 100, m.get('progress', 0), key=f"progress_{m.get('id', 0)}")
+        if st.button("Cập nhật", key=f"btn_{m.get('id', 0)}"):
             m['progress'] = new_progress
             update_statuses()
             st.success("✅ Đã cập nhật!")
@@ -439,11 +449,11 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("#### 📅 Lịch trình")
     for m in st.session_state.milestones:
-        status = get_status_info(m['status'])
+        status = get_status_info(m.get('status', 'upcoming'))
         st.markdown(f"""
         <div style="background:white;padding:1rem;margin:0.5rem 0;border-radius:0.5rem;border-left:4px solid {status['color']};box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-            <div style="font-weight:600;">{status['icon']} {m['name']}</div>
-            <div style="font-size:0.875rem;color:#64748b;">📅 {m['deadline'].strftime('%d/%m/%Y')} ({m['days']} ngày)</div>
+            <div style="font-weight:600;">{status['icon']} {m.get('name', '')}</div>
+            <div style="font-size:0.875rem;color:#64748b;">📅 {m.get('deadline', datetime.now()).strftime('%d/%m/%Y')} ({m.get('days', 0)} ngày)</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -451,22 +461,23 @@ with col2:
     st.markdown("#### 📈 Phân bố Trạng thái")
     status_data = {}
     for m in st.session_state.milestones:
-        status = get_status_info(m['status'])['label']
+        status = get_status_info(m.get('status', 'upcoming'))['label']
         status_data[status] = status_data.get(status, 0) + 1
     
-    fig_pie = px.pie(
-        values=list(status_data.values()),
-        names=list(status_data.keys()),
-        color_discrete_map={
-            'Hoàn thành': '#10b981',
-            'Đang thực hiện': '#f59e0b',
-            'Sắp tới': '#3b82f6',
-            'Quá hạn': '#ef4444'
-        }
-    )
-    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-    fig_pie.update_layout(height=300, showlegend=True)
-    st.plotly_chart(fig_pie, use_container_width=True)
+    if status_data:
+        fig_pie = px.pie(
+            values=list(status_data.values()),
+            names=list(status_data.keys()),
+            color_discrete_map={
+                'Hoàn thành': '#10b981',
+                'Đang thực hiện': '#f59e0b',
+                'Sắp tới': '#3b82f6',
+                'Quá hạn': '#ef4444'
+            }
+        )
+        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+        fig_pie.update_layout(height=300, showlegend=True)
+        st.plotly_chart(fig_pie, use_container_width=True)
 
 # Footer
 st.markdown("---")
