@@ -131,33 +131,6 @@ st.markdown("""
         font-weight: 600;
         font-size: 0.75rem;
     }
-    .timeline-container {
-        position: relative;
-        padding: 2rem 0;
-    }
-    .timeline-line {
-        position: absolute;
-        left: 50%;
-        top: 0;
-        bottom: 0;
-        width: 4px;
-        background: #e2e8f0;
-        transform: translateX(-50%);
-    }
-    .timeline-item {
-        position: relative;
-        margin: 2rem 0;
-        display: flex;
-        align-items: center;
-    }
-    .timeline-dot {
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        border: 4px solid white;
-        box-shadow: 0 0 0 4px;
-        z-index: 1;
-    }
     .stat-card {
         background: white;
         padding: 1.5rem;
@@ -199,6 +172,71 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# Helper functions (define these BEFORE using them)
+def get_status_config(status):
+    configs = {
+        'completed': {
+            'label': 'Hoàn thành',
+            'color': '#10b981',
+            'bg': '#d1fae5',
+            'icon': '✅',
+            'class': 'completed'
+        },
+        'in-progress': {
+            'label': 'Đang thực hiện',
+            'color': '#f59e0b',
+            'bg': '#fef3c7',
+            'icon': '⏳',
+            'class': 'in-progress'
+        },
+        'upcoming': {
+            'label': 'Sắp tới',
+            'color': '#3b82f6',
+            'bg': '#dbeafe',
+            'icon': '📅',
+            'class': 'upcoming'
+        },
+        'overdue': {
+            'label': 'Quá hạn',
+            'color': '#ef4444',
+            'bg': '#fee2e2',
+            'icon': '⚠️',
+            'class': 'overdue'
+        }
+    }
+    return configs.get(status, configs['upcoming'])
+
+def calculate_days_remaining(deadline):
+    today = datetime.now()
+    delta = deadline - today
+    return delta.days
+
+def get_overall_progress():
+    if 'milestones' not in st.session_state or not st.session_state.milestones:
+        return 0
+    total_progress = sum(m['progress'] for m in st.session_state.milestones)
+    return total_progress / len(st.session_state.milestones)
+
+def update_milestone_status():
+    """Update milestone status based on current date"""
+    if 'milestones' not in st.session_state:
+        return
+        
+    today = datetime.now()
+    for milestone in st.session_state.milestones:
+        # Make sure deadline exists
+        if 'deadline' not in milestone:
+            continue
+            
+        if milestone['progress'] >= 100:
+            milestone['status'] = 'completed'
+        elif today > milestone['deadline'] and milestone['progress'] < 100:
+            milestone['status'] = 'overdue'
+        elif today >= milestone['deadline'] - timedelta(days=milestone['days']):
+            milestone['status'] = 'in-progress'
+        else:
+            milestone['status'] = 'upcoming'
 
 # Initialize session state
 if 'contract_date' not in st.session_state:
@@ -297,63 +335,7 @@ if 'milestones' not in st.session_state:
         }
     ]
 
-# Helper functions
-def get_status_config(status):
-    configs = {
-        'completed': {
-            'label': 'Hoàn thành',
-            'color': '#10b981',
-            'bg': '#d1fae5',
-            'icon': '✅',
-            'class': 'completed'
-        },
-        'in-progress': {
-            'label': 'Đang thực hiện',
-            'color': '#f59e0b',
-            'bg': '#fef3c7',
-            'icon': '⏳',
-            'class': 'in-progress'
-        },
-        'upcoming': {
-            'label': 'Sắp tới',
-            'color': '#3b82f6',
-            'bg': '#dbeafe',
-            'icon': '📅',
-            'class': 'upcoming'
-        },
-        'overdue': {
-            'label': 'Quá hạn',
-            'color': '#ef4444',
-            'bg': '#fee2e2',
-            'icon': '⚠️',
-            'class': 'overdue'
-        }
-    }
-    return configs.get(status, configs['upcoming'])
-
-def calculate_days_remaining(deadline):
-    today = datetime.now()
-    delta = deadline - today
-    return delta.days
-
-def get_overall_progress():
-    total_progress = sum(m['progress'] for m in st.session_state.milestones)
-    return total_progress / len(st.session_state.milestones)
-
-def update_milestone_status():
-    """Update milestone status based on current date"""
-    today = datetime.now()
-    for milestone in st.session_state.milestones:
-        if milestone['progress'] >= 100:
-            milestone['status'] = 'completed'
-        elif today > milestone['deadline'] and milestone['progress'] < 100:
-            milestone['status'] = 'overdue'
-        elif today >= milestone['deadline'] - timedelta(days=milestone['days']):
-            milestone['status'] = 'in-progress'
-        else:
-            milestone['status'] = 'upcoming'
-
-# Update statuses
+# Update statuses after initialization
 update_milestone_status()
 
 # Sidebar
@@ -373,6 +355,7 @@ with st.sidebar:
         # Recalculate all deadlines
         for milestone in st.session_state.milestones:
             milestone['deadline'] = st.session_state.contract_date + timedelta(days=milestone['days'])
+        update_milestone_status()
         st.rerun()
     
     st.markdown("---")
@@ -483,10 +466,8 @@ st.markdown("### 📊 Biểu đồ Timeline")
 # Create Gantt chart
 fig = go.Figure()
 
-for idx, milestone in enumerate(st.session_state.milestones):
+for milestone in st.session_state.milestones:
     status_config = get_status_config(milestone['status'])
-    start_date = st.session_state.contract_date
-    end_date = milestone['deadline']
     
     fig.add_trace(go.Bar(
         x=[milestone['days']],
@@ -500,7 +481,7 @@ for idx, milestone in enumerate(st.session_state.milestones):
         hovertemplate=f"""
         <b>{milestone['name']}</b><br>
         Thời hạn: {milestone['days']} ngày<br>
-        Deadline: {end_date.strftime('%d/%m/%Y')}<br>
+        Deadline: {milestone['deadline'].strftime('%d/%m/%Y')}<br>
         Tiến độ: {milestone['progress']}%<br>
         <extra></extra>
         """,
