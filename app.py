@@ -74,6 +74,15 @@ st.markdown("""
         margin: 0.5rem 0;
         border-radius: 0.5rem;
         border-left: 3px solid #9ca3af;
+        transition: all 0.2s ease;
+    }
+    .deliverable-item:hover {
+        background: #f3f4f6;
+    }
+    .deliverable-completed {
+        background: #ecfdf5;
+        border-left-color: #10b981;
+        opacity: 0.8;
     }
     .contact-box {
         background: #f3f4f6;
@@ -88,6 +97,9 @@ st.markdown("""
         text-align: center;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         border-top: 4px solid;
+    }
+    .stCheckbox {
+        margin: 0.5rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -126,6 +138,18 @@ def days_until(deadline):
     """Calculate days until deadline"""
     return (deadline - datetime.now()).days
 
+def calculate_milestone_progress(milestone):
+    """Calculate progress based on completed deliverables"""
+    if 'deliverables' not in milestone:
+        return milestone.get('progress', 0)
+    
+    total = len(milestone['deliverables'])
+    if total == 0:
+        return 0
+    
+    completed = sum(1 for d in milestone['deliverables'] if d.get('completed', False))
+    return int((completed / total) * 100)
+
 # Initialize session state
 if 'contract_date' not in st.session_state:
     st.session_state.contract_date = datetime(2025, 10, 31)
@@ -147,11 +171,11 @@ if 'milestones' not in st.session_state:
                 'email': 'an.nguyen@company.com'
             },
             'deliverables': [
-                'Bản vẽ thiết kế kỹ thuật tổng thể hệ thống',
-                'Mô tả chi tiết kiến trúc hệ thống và các thành phần',
-                'Danh mục thiết bị, phần cứng và phần mềm',
-                'Tài liệu kỹ thuật đặc tả hệ thống',
-                'Phương án triển khai và tích hợp'
+                {'text': 'Bản vẽ thiết kế kỹ thuật tổng thể hệ thống', 'completed': False},
+                {'text': 'Mô tả chi tiết kiến trúc hệ thống và các thành phần', 'completed': False},
+                {'text': 'Danh mục thiết bị, phần cứng và phần mềm', 'completed': False},
+                {'text': 'Tài liệu kỹ thuật đặc tả hệ thống', 'completed': False},
+                {'text': 'Phương án triển khai và tích hợp', 'completed': False}
             ]
         },
         {
@@ -168,12 +192,12 @@ if 'milestones' not in st.session_state:
                 'email': 'binh.tran@company.com'
             },
             'deliverables': [
-                'Kế hoạch chi tiết lắp đặt thiết bị phần cứng',
-                'Kế hoạch cài đặt và cấu hình phần mềm hệ thống',
-                'Lịch trình triển khai từng giai đoạn',
-                'Danh sách nhân lực và phân công công việc',
-                'Kế hoạch kiểm tra và nghiệm thu từng bước',
-                'Phương án xử lý rủi ro và dự phòng'
+                {'text': 'Kế hoạch chi tiết lắp đặt thiết bị phần cứng', 'completed': False},
+                {'text': 'Kế hoạch cài đặt và cấu hình phần mềm hệ thống', 'completed': False},
+                {'text': 'Lịch trình triển khai từng giai đoạn', 'completed': False},
+                {'text': 'Danh sách nhân lực và phân công công việc', 'completed': False},
+                {'text': 'Kế hoạch kiểm tra và nghiệm thu từng bước', 'completed': False},
+                {'text': 'Phương án xử lý rủi ro và dự phòng', 'completed': False}
             ]
         },
         {
@@ -190,12 +214,12 @@ if 'milestones' not in st.session_state:
                 'email': 'cuong.le@company.com'
             },
             'deliverables': [
-                'Kế hoạch chuyển đổi dữ liệu từ hệ thống cũ',
-                'Phương án đào tạo người dùng',
-                'Quy trình vận hành hệ thống mới',
-                'Kế hoạch song song vận hành 2 hệ thống',
-                'Tiêu chí đánh giá và nghiệm thu chuyển đổi',
-                'Kế hoạch hỗ trợ sau chuyển đổi'
+                {'text': 'Kế hoạch chuyển đổi dữ liệu từ hệ thống cũ', 'completed': False},
+                {'text': 'Phương án đào tạo người dùng', 'completed': False},
+                {'text': 'Quy trình vận hành hệ thống mới', 'completed': False},
+                {'text': 'Kế hoạch song song vận hành 2 hệ thống', 'completed': False},
+                {'text': 'Tiêu chí đánh giá và nghiệm thu chuyển đổi', 'completed': False},
+                {'text': 'Kế hoạch hỗ trợ sau chuyển đổi', 'completed': False}
             ]
         },
         {
@@ -212,13 +236,13 @@ if 'milestones' not in st.session_state:
                 'email': 'dung.pham@company.com'
             },
             'deliverables': [
-                'Hệ thống được triển khai đầy đủ và vận hành ổn định',
-                'Hoàn tất kiểm thử tổng thể (System Testing)',
-                'Hoàn tất kiểm thử chấp nhận người dùng (UAT)',
-                'Tài liệu vận hành và bảo trì hệ thống',
-                'Chương trình đào tạo người dùng đã hoàn thành',
-                'Biên bản nghiệm thu và bàn giao hệ thống',
-                'Hệ thống sẵn sàng đưa vào sử dụng chính thức'
+                {'text': 'Hệ thống được triển khai đầy đủ và vận hành ổn định', 'completed': False},
+                {'text': 'Hoàn tất kiểm thử tổng thể (System Testing)', 'completed': False},
+                {'text': 'Hoàn tất kiểm thử chấp nhận người dùng (UAT)', 'completed': False},
+                {'text': 'Tài liệu vận hành và bảo trì hệ thống', 'completed': False},
+                {'text': 'Chương trình đào tạo người dùng đã hoàn thành', 'completed': False},
+                {'text': 'Biên bản nghiệm thu và bàn giao hệ thống', 'completed': False},
+                {'text': 'Hệ thống sẵn sàng đưa vào sử dụng chính thức', 'completed': False}
             ]
         }
     ]
@@ -253,9 +277,17 @@ with st.sidebar:
     completed = len([m for m in st.session_state.milestones if m.get('status') == 'completed'])
     in_progress = len([m for m in st.session_state.milestones if m.get('status') == 'in-progress'])
     
-    st.metric("Tổng số", total)
+    # Calculate total deliverables
+    total_deliverables = sum(len(m.get('deliverables', [])) for m in st.session_state.milestones)
+    completed_deliverables = sum(
+        sum(1 for d in m.get('deliverables', []) if d.get('completed', False))
+        for m in st.session_state.milestones
+    )
+    
+    st.metric("Tổng Milestone", total)
     st.metric("Hoàn thành", completed)
     st.metric("Đang làm", in_progress)
+    st.metric("Deliverables", f"{completed_deliverables}/{total_deliverables}")
     
     avg_progress = sum(m.get('progress', 0) for m in st.session_state.milestones) / total if total > 0 else 0
     st.metric("Tiến độ TB", f"{avg_progress:.0f}%")
@@ -264,6 +296,8 @@ with st.sidebar:
     
     show_completed = st.checkbox("Hiện milestone đã xong", value=True)
     show_deliverables = st.checkbox("Hiện chi tiết deliverables", value=True)
+    auto_calculate_progress = st.checkbox("Tự động tính tiến độ từ deliverables", value=True, 
+                                         help="Tiến độ sẽ được tính tự động dựa trên số deliverable đã hoàn thành")
 
 # Contract info banner
 days_passed = (datetime.now() - st.session_state.contract_date).days
@@ -409,7 +443,7 @@ for m in display:
         </div>
     """, unsafe_allow_html=True)
     
-    # Contact
+    # Contact with edit button
     c = m.get('contact', {})
     st.markdown(f"""
         <div class="contact-box">
@@ -423,22 +457,98 @@ for m in display:
         </div>
     """, unsafe_allow_html=True)
     
-    # Deliverables
-    if show_deliverables and 'deliverables' in m:
-        st.markdown('<div style="margin-top:1rem;font-weight:700;color:#1e293b;">📦 Nội dung Bàn giao:</div>', unsafe_allow_html=True)
-        for idx, d in enumerate(m.get('deliverables', []), 1):
-            st.markdown(f'<div class="deliverable-item">{idx}. {d}</div>', unsafe_allow_html=True)
-    
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Update progress
-    with st.expander("🔧 Cập nhật tiến độ"):
-        new_progress = st.slider("Tiến độ mới", 0, 100, m.get('progress', 0), key=f"progress_{m.get('id', 0)}")
-        if st.button("Cập nhật", key=f"btn_{m.get('id', 0)}"):
-            m['progress'] = new_progress
-            update_statuses()
-            st.success("✅ Đã cập nhật!")
+    # Edit contact section
+    with st.expander("✏️ Chỉnh sửa Đầu mối"):
+        st.markdown("### Cập nhật Thông tin Đầu mối")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            new_name = st.text_input("Họ tên", value=c.get('name', ''), key=f"name_{m.get('id', 0)}")
+            new_phone = st.text_input("Số điện thoại", value=c.get('phone', ''), key=f"phone_{m.get('id', 0)}")
+        
+        with col2:
+            new_role = st.text_input("Vai trò", value=c.get('role', ''), key=f"role_{m.get('id', 0)}")
+            new_email = st.text_input("Email", value=c.get('email', ''), key=f"email_{m.get('id', 0)}")
+        
+        if st.button("💾 Lưu thông tin đầu mối", key=f"save_contact_{m.get('id', 0)}"):
+            m['contact'] = {
+                'name': new_name,
+                'role': new_role,
+                'phone': new_phone,
+                'email': new_email
+            }
+            st.success("✅ Đã cập nhật thông tin đầu mối!")
             st.rerun()
+    
+    # Deliverables with checkboxes
+    if show_deliverables and 'deliverables' in m:
+        st.markdown('<div style="margin-top:1rem;"><strong style="font-size:1.1rem;color:#1e293b;">📦 Nội dung Bàn giao:</strong></div>', unsafe_allow_html=True)
+        
+        # Calculate completion stats
+        total_deliverables = len(m.get('deliverables', []))
+        completed_count = sum(1 for d in m.get('deliverables', []) if d.get('completed', False))
+        completion_rate = (completed_count / total_deliverables * 100) if total_deliverables > 0 else 0
+        
+        st.markdown(f"""
+        <div style="background:#f1f5f9;padding:0.75rem;border-radius:0.5rem;margin:0.5rem 0;">
+            <strong>Hoàn thành:</strong> {completed_count}/{total_deliverables} ({completion_rate:.0f}%)
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Display deliverables with checkboxes
+        for idx, d in enumerate(m.get('deliverables', [])):
+            col1, col2 = st.columns([0.1, 0.9])
+            
+            with col1:
+                checked = st.checkbox(
+                    "",
+                    value=d.get('completed', False),
+                    key=f"deliverable_{m.get('id', 0)}_{idx}",
+                    label_visibility="collapsed"
+                )
+                
+                # Update completion status if changed
+                if checked != d.get('completed', False):
+                    d['completed'] = checked
+                    
+                    # Auto-calculate progress if enabled
+                    if auto_calculate_progress:
+                        m['progress'] = calculate_milestone_progress(m)
+                    
+                    update_statuses()
+                    st.rerun()
+            
+            with col2:
+                completed_class = "deliverable-completed" if d.get('completed', False) else ""
+                check_icon = "✅" if d.get('completed', False) else "⬜"
+                text_decoration = "text-decoration:line-through;opacity:0.6;" if d.get('completed', False) else ""
+                
+                st.markdown(f"""
+                <div class="deliverable-item {completed_class}" style="{text_decoration}">
+                    {check_icon} {idx + 1}. {d.get('text', '')}
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Update progress section
+    with st.expander("🔧 Cập nhật Tiến độ"):
+        if auto_calculate_progress:
+            st.info("ℹ️ Tiến độ đang được tính tự động từ deliverables. Tắt chế độ tự động trong Sidebar nếu muốn nhập thủ công.")
+            st.metric("Tiến độ tự động", f"{m.get('progress', 0)}%")
+        else:
+            new_progress = st.slider(
+                "Điều chỉnh tiến độ",
+                0, 100, 
+                m.get('progress', 0),
+                key=f"progress_{m.get('id', 0)}"
+            )
+            
+            if st.button("📊 Cập nhật tiến độ", key=f"btn_progress_{m.get('id', 0)}"):
+                m['progress'] = new_progress
+                update_statuses()
+                st.success("✅ Đã cập nhật tiến độ!")
+                st.rerun()
 
 # Summary
 st.markdown("---")
@@ -450,10 +560,18 @@ with col1:
     st.markdown("#### 📅 Lịch trình")
     for m in st.session_state.milestones:
         status = get_status_info(m.get('status', 'upcoming'))
+        completed_del = sum(1 for d in m.get('deliverables', []) if d.get('completed', False))
+        total_del = len(m.get('deliverables', []))
+        
         st.markdown(f"""
         <div style="background:white;padding:1rem;margin:0.5rem 0;border-radius:0.5rem;border-left:4px solid {status['color']};box-shadow:0 1px 3px rgba(0,0,0,0.1);">
             <div style="font-weight:600;">{status['icon']} {m.get('name', '')}</div>
-            <div style="font-size:0.875rem;color:#64748b;">📅 {m.get('deadline', datetime.now()).strftime('%d/%m/%Y')} ({m.get('days', 0)} ngày)</div>
+            <div style="font-size:0.875rem;color:#64748b;">
+                📅 {m.get('deadline', datetime.now()).strftime('%d/%m/%Y')} ({m.get('days', 0)} ngày)
+            </div>
+            <div style="font-size:0.75rem;color:#64748b;margin-top:0.25rem;">
+                📦 Deliverables: {completed_del}/{total_del}
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
