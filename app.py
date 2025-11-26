@@ -98,13 +98,24 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         border-top: 4px solid;
     }
-    .stCheckbox {
-        margin: 0.5rem 0;
+    .overdue-warning {
+        background: #fef2f2;
+        border: 2px solid #ef4444;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    .extension-box {
+        background: #fffbeb;
+        border: 2px solid #f59e0b;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Helper functions (DEFINE BEFORE USING)
+# Helper functions
 def get_status_info(status):
     info = {
         'completed': {'label': 'Hoàn thành', 'color': '#10b981', 'icon': '✅'},
@@ -121,7 +132,6 @@ def update_statuses():
     
     today = datetime.now()
     for m in st.session_state.milestones:
-        # Safety check
         if 'deadline' not in m or 'progress' not in m:
             continue
             
@@ -161,9 +171,12 @@ if 'milestones' not in st.session_state:
             'id': 1,
             'name': 'Hồ sơ Thiết kế Kỹ thuật Chi tiết',
             'days': 30,
+            'original_days': 30,
             'deadline': contract + timedelta(days=30),
+            'original_deadline': contract + timedelta(days=30),
             'status': 'upcoming',
             'progress': 0,
+            'extensions': [],
             'contact': {
                 'name': 'Nguyễn Văn An',
                 'role': 'Trưởng phòng Thiết kế',
@@ -182,9 +195,12 @@ if 'milestones' not in st.session_state:
             'id': 2,
             'name': 'Kế hoạch Triển khai Lắp đặt & Cài đặt',
             'days': 60,
+            'original_days': 60,
             'deadline': contract + timedelta(days=60),
+            'original_deadline': contract + timedelta(days=60),
             'status': 'upcoming',
             'progress': 0,
+            'extensions': [],
             'contact': {
                 'name': 'Trần Thị Bình',
                 'role': 'Trưởng phòng Triển khai',
@@ -204,9 +220,12 @@ if 'milestones' not in st.session_state:
             'id': 3,
             'name': 'Kế hoạch Chuyển đổi Hệ thống',
             'days': 100,
+            'original_days': 100,
             'deadline': contract + timedelta(days=100),
+            'original_deadline': contract + timedelta(days=100),
             'status': 'upcoming',
             'progress': 0,
+            'extensions': [],
             'contact': {
                 'name': 'Lê Văn Cường',
                 'role': 'Chuyên gia Chuyển đổi số',
@@ -226,9 +245,12 @@ if 'milestones' not in st.session_state:
             'id': 4,
             'name': 'Hoàn thành & Sẵn sàng Cung cấp Dịch vụ',
             'days': 150,
+            'original_days': 150,
             'deadline': contract + timedelta(days=150),
+            'original_deadline': contract + timedelta(days=150),
             'status': 'upcoming',
             'progress': 0,
+            'extensions': [],
             'contact': {
                 'name': 'Phạm Thị Dung',
                 'role': 'Giám đốc Dự án',
@@ -247,7 +269,7 @@ if 'milestones' not in st.session_state:
         }
     ]
 
-# NOW update statuses after initialization
+# Update statuses
 update_statuses()
 
 # Header
@@ -266,7 +288,9 @@ with st.sidebar:
     if contract_date != st.session_state.contract_date.date():
         st.session_state.contract_date = datetime.combine(contract_date, datetime.min.time())
         for m in st.session_state.milestones:
-            m['deadline'] = st.session_state.contract_date + timedelta(days=m['days'])
+            days_diff = (m['deadline'] - m.get('original_deadline', m['deadline'])).days
+            m['original_deadline'] = st.session_state.contract_date + timedelta(days=m['original_days'])
+            m['deadline'] = m['original_deadline'] + timedelta(days=days_diff)
         update_statuses()
         st.rerun()
     
@@ -276,8 +300,8 @@ with st.sidebar:
     total = len(st.session_state.milestones)
     completed = len([m for m in st.session_state.milestones if m.get('status') == 'completed'])
     in_progress = len([m for m in st.session_state.milestones if m.get('status') == 'in-progress'])
+    overdue = len([m for m in st.session_state.milestones if m.get('status') == 'overdue'])
     
-    # Calculate total deliverables
     total_deliverables = sum(len(m.get('deliverables', [])) for m in st.session_state.milestones)
     completed_deliverables = sum(
         sum(1 for d in m.get('deliverables', []) if d.get('completed', False))
@@ -287,6 +311,7 @@ with st.sidebar:
     st.metric("Tổng Milestone", total)
     st.metric("Hoàn thành", completed)
     st.metric("Đang làm", in_progress)
+    st.metric("Quá hạn", overdue)
     st.metric("Deliverables", f"{completed_deliverables}/{total_deliverables}")
     
     avg_progress = sum(m.get('progress', 0) for m in st.session_state.milestones) / total if total > 0 else 0
@@ -296,10 +321,8 @@ with st.sidebar:
     
     show_completed = st.checkbox("Hiện milestone đã xong", value=True)
     show_deliverables = st.checkbox("Hiện chi tiết deliverables", value=True)
-    auto_calculate_progress = st.checkbox("Tự động tính tiến độ từ deliverables", value=True, 
-                                         help="Tiến độ sẽ được tính tự động dựa trên số deliverable đã hoàn thành")
 
-# Contract info banner
+# Contract banner
 days_passed = (datetime.now() - st.session_state.contract_date).days
 st.markdown(f"""
 <div class="contract-banner">
@@ -347,20 +370,19 @@ with col2:
     """, unsafe_allow_html=True)
 
 with col3:
+    st.markdown(f"""
+    <div class="stat-card" style="border-top-color:#ef4444;">
+        <div style="font-size:0.875rem;color:#64748b;font-weight:600;">QUÁ HẠN</div>
+        <div style="font-size:2.5rem;font-weight:700;color:#ef4444;">{overdue}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col4:
     upcoming = len([m for m in st.session_state.milestones if m.get('status') == 'upcoming'])
     st.markdown(f"""
     <div class="stat-card" style="border-top-color:#3b82f6;">
         <div style="font-size:0.875rem;color:#64748b;font-weight:600;">SẮP TỚI</div>
         <div style="font-size:2.5rem;font-weight:700;color:#3b82f6;">{upcoming}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col4:
-    max_days = max(m.get('days', 0) for m in st.session_state.milestones)
-    st.markdown(f"""
-    <div class="stat-card" style="border-top-color:#8b5cf6;">
-        <div style="font-size:0.875rem;color:#64748b;font-weight:600;">TỔNG THỜI GIAN</div>
-        <div style="font-size:2.5rem;font-weight:700;color:#8b5cf6;">{max_days}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -443,50 +465,133 @@ for m in display:
         </div>
     """, unsafe_allow_html=True)
     
-    # Contact with edit button
-    c = m.get('contact', {})
-    st.markdown(f"""
-        <div class="contact-box">
-            <div style="font-weight:700;color:#1e293b;margin-bottom:0.5rem;">
-                👤 Đầu mối: {c.get('name', 'N/A')}
-            </div>
-            <div style="font-size:0.875rem;color:#64748b;">{c.get('role', 'N/A')}</div>
-            <div style="font-size:0.75rem;color:#64748b;margin-top:0.5rem;">
-                📞 {c.get('phone', 'N/A')} | 📧 {c.get('email', 'N/A')}
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Edit contact section
-    with st.expander("✏️ Chỉnh sửa Đầu mối"):
-        st.markdown("### Cập nhật Thông tin Đầu mối")
-        col1, col2 = st.columns(2)
+    # Overdue warning and extension option
+    if m.get('status') == 'overdue':
+        st.markdown(f"""
+        <div class="overdue-warning">
+            <div style="font-size:1.25rem;font-weight:700;color:#dc2626;margin-bottom:0.5rem;">
+                ⚠️ Milestone đang Quá hạn!
+            </div>
+            <div style="color:#991b1b;">
+                Đã quá hạn: <strong>{abs(days_left)}</strong> ngày kể từ deadline gốc
+            </div>
+            <div style="color:#991b1b;margin-top:0.25rem;">
+                Deadline gốc: <strong>{m.get('original_deadline', m.get('deadline')).strftime('%d/%m/%Y')}</strong>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        with col1:
-            new_name = st.text_input("Họ tên", value=c.get('name', ''), key=f"name_{m.get('id', 0)}")
-            new_phone = st.text_input("Số điện thoại", value=c.get('phone', ''), key=f"phone_{m.get('id', 0)}")
+        with st.expander("📆 Gia hạn Deadline", expanded=False):
+            st.markdown("### Cập nhật Thời gian Gia hạn")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                extension_days = st.number_input(
+                    "Số ngày gia hạn",
+                    min_value=1,
+                    max_value=365,
+                    value=30,
+                    key=f"ext_days_{m.get('id', 0)}"
+                )
+            
+            with col2:
+                extension_reason = st.text_input(
+                    "Lý do gia hạn",
+                    placeholder="VD: Chờ phê duyệt từ khách hàng",
+                    key=f"ext_reason_{m.get('id', 0)}"
+                )
+            
+            if st.button("✅ Xác nhận Gia hạn", key=f"confirm_ext_{m.get('id', 0)}", type="primary"):
+                if extension_reason.strip():
+                    # Save extension info
+                    extension_info = {
+                        'date': datetime.now().strftime('%d/%m/%Y %H:%M'),
+                        'days': extension_days,
+                        'reason': extension_reason,
+                        'old_deadline': m['deadline'].strftime('%d/%m/%Y'),
+                        'new_deadline': (m['deadline'] + timedelta(days=extension_days)).strftime('%d/%m/%Y')
+                    }
+                    
+                    if 'extensions' not in m:
+                        m['extensions'] = []
+                    m['extensions'].append(extension_info)
+                    
+                    # Update deadline
+                    m['deadline'] = m['deadline'] + timedelta(days=extension_days)
+                    m['days'] = (m['deadline'] - st.session_state.contract_date).days
+                    
+                    update_statuses()
+                    st.success(f"✅ Đã gia hạn thành công {extension_days} ngày! Deadline mới: {m['deadline'].strftime('%d/%m/%Y')}")
+                    st.rerun()
+                else:
+                    st.error("⚠️ Vui lòng nhập lý do gia hạn!")
         
-        with col2:
-            new_role = st.text_input("Vai trò", value=c.get('role', ''), key=f"role_{m.get('id', 0)}")
-            new_email = st.text_input("Email", value=c.get('email', ''), key=f"email_{m.get('id', 0)}")
-        
-        if st.button("💾 Lưu thông tin đầu mối", key=f"save_contact_{m.get('id', 0)}"):
-            m['contact'] = {
-                'name': new_name,
-                'role': new_role,
-                'phone': new_phone,
-                'email': new_email
-            }
-            st.success("✅ Đã cập nhật thông tin đầu mối!")
-            st.rerun()
+        # Show extension history
+        if m.get('extensions'):
+            st.markdown("#### 📜 Lịch sử Gia hạn")
+            for idx, ext in enumerate(m.get('extensions', []), 1):
+                st.markdown(f"""
+                <div style="background:#fffbeb;padding:0.75rem;border-radius:0.5rem;border-left:3px solid #f59e0b;margin:0.5rem 0;">
+                    <div style="font-weight:600;color:#92400e;">Lần {idx}: {ext['date']}</div>
+                    <div style="font-size:0.875rem;color:#78350f;margin-top:0.25rem;">
+                        • Gia hạn: <strong>{ext['days']}</strong> ngày<br>
+                        • Từ: {ext['old_deadline']} → {ext['new_deadline']}<br>
+                        • Lý do: {ext['reason']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
     
-    # Deliverables with checkboxes
-    if show_deliverables and 'deliverables' in m:
-        st.markdown('<div style="margin-top:1rem;"><strong style="font-size:1.1rem;color:#1e293b;">📦 Nội dung Bàn giao:</strong></div>', unsafe_allow_html=True)
+    # Contact - inline editing
+    c = m.get('contact', {})
+    st.markdown("### 👤 Thông tin Đầu mối")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        new_name = st.text_input(
+            "Họ tên",
+            value=c.get('name', ''),
+            key=f"contact_name_{m.get('id', 0)}",
+            label_visibility="visible"
+        )
+        new_phone = st.text_input(
+            "Số điện thoại",
+            value=c.get('phone', ''),
+            key=f"contact_phone_{m.get('id', 0)}"
+        )
+    
+    with col2:
+        new_role = st.text_input(
+            "Vai trò",
+            value=c.get('role', ''),
+            key=f"contact_role_{m.get('id', 0)}"
+        )
+        new_email = st.text_input(
+            "Email",
+            value=c.get('email', ''),
+            key=f"contact_email_{m.get('id', 0)}"
+        )
+    
+    # Auto-update contact info when changed
+    if (new_name != c.get('name', '') or 
+        new_role != c.get('role', '') or 
+        new_phone != c.get('phone', '') or 
+        new_email != c.get('email', '')):
         
-        # Calculate completion stats
+        m['contact'] = {
+            'name': new_name,
+            'role': new_role,
+            'phone': new_phone,
+            'email': new_email
+        }
+    
+    # Deliverables
+    if show_deliverables and 'deliverables' in m:
+        st.markdown("---")
+        st.markdown("### 📦 Nội dung Bàn giao")
+        
         total_deliverables = len(m.get('deliverables', []))
         completed_count = sum(1 for d in m.get('deliverables', []) if d.get('completed', False))
         completion_rate = (completed_count / total_deliverables * 100) if total_deliverables > 0 else 0
@@ -497,7 +602,6 @@ for m in display:
         </div>
         """, unsafe_allow_html=True)
         
-        # Display deliverables with checkboxes
         for idx, d in enumerate(m.get('deliverables', [])):
             col1, col2 = st.columns([0.1, 0.9])
             
@@ -505,18 +609,13 @@ for m in display:
                 checked = st.checkbox(
                     "",
                     value=d.get('completed', False),
-                    key=f"deliverable_{m.get('id', 0)}_{idx}",
+                    key=f"deliv_{m.get('id', 0)}_{idx}",
                     label_visibility="collapsed"
                 )
                 
-                # Update completion status if changed
                 if checked != d.get('completed', False):
                     d['completed'] = checked
-                    
-                    # Auto-calculate progress if enabled
-                    if auto_calculate_progress:
-                        m['progress'] = calculate_milestone_progress(m)
-                    
+                    m['progress'] = calculate_milestone_progress(m)
                     update_statuses()
                     st.rerun()
             
@@ -530,25 +629,6 @@ for m in display:
                     {check_icon} {idx + 1}. {d.get('text', '')}
                 </div>
                 """, unsafe_allow_html=True)
-    
-    # Update progress section
-    with st.expander("🔧 Cập nhật Tiến độ"):
-        if auto_calculate_progress:
-            st.info("ℹ️ Tiến độ đang được tính tự động từ deliverables. Tắt chế độ tự động trong Sidebar nếu muốn nhập thủ công.")
-            st.metric("Tiến độ tự động", f"{m.get('progress', 0)}%")
-        else:
-            new_progress = st.slider(
-                "Điều chỉnh tiến độ",
-                0, 100, 
-                m.get('progress', 0),
-                key=f"progress_{m.get('id', 0)}"
-            )
-            
-            if st.button("📊 Cập nhật tiến độ", key=f"btn_progress_{m.get('id', 0)}"):
-                m['progress'] = new_progress
-                update_statuses()
-                st.success("✅ Đã cập nhật tiến độ!")
-                st.rerun()
 
 # Summary
 st.markdown("---")
@@ -563,9 +643,17 @@ with col1:
         completed_del = sum(1 for d in m.get('deliverables', []) if d.get('completed', False))
         total_del = len(m.get('deliverables', []))
         
+        extension_badge = ""
+        if m.get('extensions'):
+            total_ext_days = sum(e['days'] for e in m['extensions'])
+            extension_badge = f'<span style="background:#fef3c7;color:#92400e;padding:0.125rem 0.5rem;border-radius:9999px;font-size:0.7rem;margin-left:0.5rem;">+{total_ext_days} ngày</span>'
+        
         st.markdown(f"""
         <div style="background:white;padding:1rem;margin:0.5rem 0;border-radius:0.5rem;border-left:4px solid {status['color']};box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-            <div style="font-weight:600;">{status['icon']} {m.get('name', '')}</div>
+            <div style="font-weight:600;">
+                {status['icon']} {m.get('name', '')}
+                {extension_badge}
+            </div>
             <div style="font-size:0.875rem;color:#64748b;">
                 📅 {m.get('deadline', datetime.now()).strftime('%d/%m/%Y')} ({m.get('days', 0)} ngày)
             </div>
