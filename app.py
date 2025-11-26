@@ -1,698 +1,239 @@
+"""
+Streamlit app: VNA Private Cloud - Simple Project Milestone Manager
+- Prepopulated milestones based on contract signing date 2025-10-31
+- Features: view milestones, assign owners, edit deliverables, mark complete, color-coded Gantt/timeline, export CSV
+
+Requirements (requirements.txt):
+streamlit
+pandas
+plotly
+
+Deploy: upload this file + requirements.txt to Streamlit Cloud or run locally: `streamlit run streamlit_vna_private_cloud.py`
+"""
+
 import streamlit as st
-from datetime import datetime, timedelta
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
+from datetime import datetime, timedelta
 
-# Page configuration
-st.set_page_config(
-    page_title="Quản lý Tiến độ Dự án",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="VNA Private Cloud - Milestone Manager", layout="wide")
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-title {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1e40af;
-        text-align: center;
-        margin-bottom: 0.5rem;
-    }
-    .contract-info {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 2rem;
-        border-radius: 1rem;
-        text-align: center;
-        margin: 2rem 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .milestone-card {
-        background: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-left: 6px solid;
-        transition: transform 0.2s;
-    }
-    .milestone-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    .status-completed {
-        border-left-color: #10b981;
-        background: linear-gradient(to right, #ecfdf5 0%, white 100%);
-    }
-    .status-in-progress {
-        border-left-color: #f59e0b;
-        background: linear-gradient(to right, #fffbeb 0%, white 100%);
-    }
-    .status-upcoming {
-        border-left-color: #3b82f6;
-        background: linear-gradient(to right, #eff6ff 0%, white 100%);
-    }
-    .status-overdue {
-        border-left-color: #ef4444;
-        background: linear-gradient(to right, #fef2f2 0%, white 100%);
-    }
-    .milestone-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: start;
-        margin-bottom: 1rem;
-    }
-    .milestone-title {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #1e293b;
-        margin-bottom: 0.5rem;
-    }
-    .milestone-days {
-        font-size: 2rem;
-        font-weight: 700;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        text-align: center;
-    }
-    .deliverable-box {
-        background: #f8fafc;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
-        border-left: 3px solid #cbd5e1;
-    }
-    .deliverable-title {
-        font-weight: 600;
-        color: #334155;
-        margin-bottom: 0.25rem;
-    }
-    .status-badge {
-        display: inline-block;
-        padding: 0.375rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
-    .badge-completed {
-        background: #d1fae5;
-        color: #065f46;
-    }
-    .badge-in-progress {
-        background: #fef3c7;
-        color: #92400e;
-    }
-    .badge-upcoming {
-        background: #dbeafe;
-        color: #1e40af;
-    }
-    .badge-overdue {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-    .progress-container {
-        background: #e2e8f0;
-        height: 20px;
-        border-radius: 9999px;
-        overflow: hidden;
-        margin: 1rem 0;
-    }
-    .progress-bar {
-        height: 100%;
-        transition: width 0.5s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: 600;
-        font-size: 0.75rem;
-    }
-    .stat-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 1rem;
-        text-align: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .stat-number {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin: 0.5rem 0;
-    }
-    .stat-label {
-        color: #64748b;
-        font-size: 0.875rem;
-        font-weight: 600;
-        text-transform: uppercase;
-    }
-    .contact-person {
-        background: #f1f5f9;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 1rem 0;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-    .contact-avatar {
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-        color: white;
-        font-weight: 700;
-    }
-</style>
-""", unsafe_allow_html=True)
+CONTRACT_START_DEFAULT = datetime(2025, 10, 31)
 
-# Helper functions (define these BEFORE using them)
-def get_status_config(status):
-    configs = {
-        'completed': {
-            'label': 'Hoàn thành',
-            'color': '#10b981',
-            'bg': '#d1fae5',
-            'icon': '✅',
-            'class': 'completed'
-        },
-        'in-progress': {
-            'label': 'Đang thực hiện',
-            'color': '#f59e0b',
-            'bg': '#fef3c7',
-            'icon': '⏳',
-            'class': 'in-progress'
-        },
-        'upcoming': {
-            'label': 'Sắp tới',
-            'color': '#3b82f6',
-            'bg': '#dbeafe',
-            'icon': '📅',
-            'class': 'upcoming'
-        },
-        'overdue': {
-            'label': 'Quá hạn',
-            'color': '#ef4444',
-            'bg': '#fee2e2',
-            'icon': '⚠️',
-            'class': 'overdue'
-        }
-    }
-    return configs.get(status, configs['upcoming'])
-
-def calculate_days_remaining(deadline):
-    today = datetime.now()
-    delta = deadline - today
-    return delta.days
-
-def get_overall_progress():
-    if 'milestones' not in st.session_state or not st.session_state.milestones:
-        return 0
-    total_progress = sum(m['progress'] for m in st.session_state.milestones)
-    return total_progress / len(st.session_state.milestones)
-
-def update_milestone_status():
-    """Update milestone status based on current date"""
-    if 'milestones' not in st.session_state:
-        return
-        
-    today = datetime.now()
-    for milestone in st.session_state.milestones:
-        # Make sure deadline exists
-        if 'deadline' not in milestone:
-            continue
-            
-        if milestone['progress'] >= 100:
-            milestone['status'] = 'completed'
-        elif today > milestone['deadline'] and milestone['progress'] < 100:
-            milestone['status'] = 'overdue'
-        elif today >= milestone['deadline'] - timedelta(days=milestone['days']):
-            milestone['status'] = 'in-progress'
-        else:
-            milestone['status'] = 'upcoming'
-
-# Initialize session state
-if 'contract_date' not in st.session_state:
-    st.session_state.contract_date = datetime(2024, 10, 31)
-
-if 'milestones' not in st.session_state:
-    contract_date = st.session_state.contract_date
-    st.session_state.milestones = [
+# ---------- Helpers ----------
+def default_milestones(start_date):
+    """Return a DataFrame with prepopulated milestones relative to start_date."""
+    data = [
         {
-            'id': 1,
-            'name': 'Hồ sơ Thiết kế Kỹ thuật Chi tiết',
-            'days': 30,
-            'deadline': contract_date + timedelta(days=30),
-            'status': 'completed',
-            'progress': 100,
-            'contact_person': {
-                'name': 'Nguyễn Văn An',
-                'role': 'Trưởng phòng Thiết kế',
-                'phone': '0912-345-678',
-                'email': 'an.nguyen@company.com'
-            },
-            'deliverables': [
-                'Bản vẽ thiết kế kỹ thuật tổng thể hệ thống',
-                'Mô tả chi tiết kiến trúc hệ thống và các thành phần',
-                'Danh mục thiết bị, phần cứng và phần mềm',
-                'Tài liệu kỹ thuật đặc tả hệ thống',
-                'Phương án triển khai và tích hợp'
-            ]
+            "id": 1,
+            "milestone": "Hồ sơ thiết kế kỹ thuật chi tiết (HLD/LLD)",
+            "days_from_start": 30,
+            "due_date": start_date + timedelta(days=30),
+            "deliverables": "Hồ sơ thiết kế kỹ thuật chi tiết; Tài liệu HLD; Tài liệu LLD",
+            "owner": "Ban CNTT / Đối tác",
+            "status": "Not Started",
         },
         {
-            'id': 2,
-            'name': 'Kế hoạch Triển khai Lắp đặt & Cài đặt',
-            'days': 60,
-            'deadline': contract_date + timedelta(days=60),
-            'status': 'in-progress',
-            'progress': 65,
-            'contact_person': {
-                'name': 'Trần Thị Bình',
-                'role': 'Trưởng phòng Triển khai',
-                'phone': '0923-456-789',
-                'email': 'binh.tran@company.com'
-            },
-            'deliverables': [
-                'Kế hoạch chi tiết lắp đặt thiết bị phần cứng',
-                'Kế hoạch cài đặt và cấu hình phần mềm hệ thống',
-                'Lịch trình triển khai từng giai đoạn',
-                'Danh sách nhân lực và phân công công việc',
-                'Kế hoạch kiểm tra và nghiệm thu từng bước',
-                'Phương án xử lý rủi ro và dự phòng'
-            ]
+            "id": 2,
+            "milestone": "Kế hoạch triển khai lắp đặt, cài đặt hệ thống",
+            "days_from_start": 60,
+            "due_date": start_date + timedelta(days=60),
+            "deliverables": "Kế hoạch triển khai; Checklists triển khai; Bản vẽ bố trí",
+            "owner": "Đối tác / Ban CNTT",
+            "status": "Not Started",
         },
         {
-            'id': 3,
-            'name': 'Kế hoạch Chuyển đổi Hệ thống',
-            'days': 100,
-            'deadline': contract_date + timedelta(days=100),
-            'status': 'upcoming',
-            'progress': 0,
-            'contact_person': {
-                'name': 'Lê Văn Cường',
-                'role': 'Chuyên gia Chuyển đổi số',
-                'phone': '0934-567-890',
-                'email': 'cuong.le@company.com'
-            },
-            'deliverables': [
-                'Kế hoạch chuyển đổi dữ liệu từ hệ thống cũ',
-                'Phương án đào tạo người dùng',
-                'Quy trình vận hành hệ thống mới',
-                'Kế hoạch song song vận hành 2 hệ thống',
-                'Tiêu chí đánh giá và nghiệm thu chuyển đổi',
-                'Kế hoạch hỗ trợ sau chuyển đổi'
-            ]
+            "id": 3,
+            "milestone": "Kế hoạch chuyển đổi hệ thống (Migration plan)",
+            "days_from_start": 100,
+            "due_date": start_date + timedelta(days=100),
+            "deliverables": "Kế hoạch migration; Kịch bản rollback; Kế hoạch kiểm thử",
+            "owner": "Ban CNTT / CQĐV",
+            "status": "Not Started",
         },
         {
-            'id': 4,
-            'name': 'Hoàn thành & Sẵn sàng Cung cấp Dịch vụ',
-            'days': 150,
-            'deadline': contract_date + timedelta(days=150),
-            'status': 'upcoming',
-            'progress': 0,
-            'contact_person': {
-                'name': 'Phạm Thị Dung',
-                'role': 'Giám đốc Dự án',
-                'phone': '0945-678-901',
-                'email': 'dung.pham@company.com'
-            },
-            'deliverables': [
-                'Hệ thống được triển khai đầy đủ và vận hành ổn định',
-                'Hoàn tất kiểm thử tổng thể (System Testing)',
-                'Hoàn tất kiểm thử chấp nhận người dùng (UAT)',
-                'Tài liệu vận hành và bảo trì hệ thống',
-                'Chương trình đào tạo người dùng đã hoàn thành',
-                'Biên bản nghiệm thu và bàn giao hệ thống',
-                'Hệ thống sẵn sàng đưa vào sử dụng chính thức'
-            ]
-        }
+            "id": 4,
+            "milestone": "Hoàn thiện triển khai và sẵn sàng cung cấp dịch vụ",
+            "days_from_start": 150,
+            "due_date": start_date + timedelta(days=150),
+            "deliverables": "Hệ thống đã triển khai, kiểm thử; Biên bản nghiệm thu; Bàn giao vận hành",
+            "owner": "Đối tác / Ban CNTT",
+            "status": "Not Started",
+        },
     ]
+    return pd.DataFrame(data)
 
-# Update statuses after initialization
-update_milestone_status()
 
-# Sidebar
-with st.sidebar:
-    st.markdown("### ⚙️ Cấu hình Dự án")
-    
-    # Contract date
-    st.markdown("#### 📅 Ngày Ký Hợp đồng")
-    contract_date = st.date_input(
-        "Ngày hiệu lực",
-        value=st.session_state.contract_date,
-        help="Ngày hợp đồng có hiệu lực"
-    )
-    
-    if contract_date != st.session_state.contract_date.date():
-        st.session_state.contract_date = datetime.combine(contract_date, datetime.min.time())
-        # Recalculate all deadlines
-        for milestone in st.session_state.milestones:
-            milestone['deadline'] = st.session_state.contract_date + timedelta(days=milestone['days'])
-        update_milestone_status()
-        st.rerun()
-    
-    st.markdown("---")
-    
-    # Quick stats
-    st.markdown("### 📊 Thống kê")
-    completed_count = len([m for m in st.session_state.milestones if m['status'] == 'completed'])
-    in_progress_count = len([m for m in st.session_state.milestones if m['status'] == 'in-progress'])
-    
-    st.metric("Hoàn thành", f"{completed_count}/{len(st.session_state.milestones)}")
-    st.metric("Đang thực hiện", in_progress_count)
-    st.metric("Tiến độ tổng thể", f"{get_overall_progress():.1f}%")
-    
-    st.markdown("---")
-    
-    # Filter options
-    st.markdown("### 🔍 Bộ lọc")
-    show_completed = st.checkbox("Hiển thị milestone đã hoàn thành", value=True)
-    show_deliverables = st.checkbox("Hiển thị chi tiết deliverables", value=True)
-    
-    st.markdown("---")
-    
-    # Project info
-    st.markdown("### ℹ️ Thông tin Dự án")
-    st.markdown("""
-    **Tên dự án:** Triển khai Hệ thống  
-    **Bên A:** Đơn vị Khách hàng  
-    **Bên B:** Đơn vị Cung cấp  
-    **Loại hợp đồng:** Triển khai & Vận hành
-    """)
+def compute_status(row, today=None):
+    if today is None:
+        today = datetime.now()
+    if row.get("completed_date") is not None and pd.notna(row.get("completed_date")):
+        return "Completed"
+    due = row["due_date"]
+    if due >= today + timedelta(days=7):
+        return "On Track"
+    if due >= today:
+        return "At Risk"
+    return "Delayed"
 
-# Main content
-st.markdown('<div class="main-title">📋 QUẢN LÝ TIẾN ĐỘ DỰ ÁN</div>', unsafe_allow_html=True)
 
-# Contract info banner
-days_since_contract = (datetime.now() - st.session_state.contract_date).days
-st.markdown(f"""
-<div class="contract-info">
-    <h2 style="margin: 0; font-size: 1.5rem;">📜 Hợp đồng có hiệu lực</h2>
-    <div style="font-size: 3rem; font-weight: 700; margin: 1rem 0;">
-        {st.session_state.contract_date.strftime('%d/%m/%Y')}
-    </div>
-    <div style="font-size: 1.25rem; opacity: 0.9;">
-        🕐 Đã trôi qua: <strong>{days_since_contract}</strong> ngày
-    </div>
-</div>
-""", unsafe_allow_html=True)
+def status_color_map(status):
+    return {
+        "Completed": "green",
+        "On Track": "blue",
+        "At Risk": "orange",
+        "Delayed": "red",
+        "Not Started": "gray",
+    }.get(status, "gray")
 
-# Overall progress
-st.markdown("### 📈 Tiến độ Tổng thể")
-overall_progress = get_overall_progress()
-progress_color = '#10b981' if overall_progress >= 75 else '#f59e0b' if overall_progress >= 50 else '#ef4444'
 
-st.markdown(f"""
-<div class="progress-container" style="height: 30px;">
-    <div class="progress-bar" style="width: {overall_progress}%; background: {progress_color};">
-        {overall_progress:.1f}%
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# ---------- App State Init ----------
+if "contract_start" not in st.session_state:
+    st.session_state.contract_start = CONTRACT_START_DEFAULT
 
-# Statistics cards
-st.markdown("---")
-col1, col2, col3, col4 = st.columns(4)
+if "milestones_df" not in st.session_state:
+    st.session_state.milestones_df = default_milestones(st.session_state.contract_start)
+    st.session_state.milestones_df["completed_date"] = pd.NaT
 
-with col1:
-    st.markdown(f"""
-    <div class="stat-card" style="border-top: 4px solid #10b981;">
-        <div class="stat-label">Đã hoàn thành</div>
-        <div class="stat-number" style="color: #10b981;">{completed_count}</div>
-        <div style="font-size: 0.875rem; color: #64748b;">milestone</div>
-    </div>
-    """, unsafe_allow_html=True)
+# ---------- Sidebar controls ----------
+st.sidebar.header("Cấu hình dự án")
+start_input = st.sidebar.date_input("Ngày ký Hợp đồng / Ngày hiệu lực", value=st.session_state.contract_start.date())
 
-with col2:
-    st.markdown(f"""
-    <div class="stat-card" style="border-top: 4px solid #f59e0b;">
-        <div class="stat-label">Đang thực hiện</div>
-        <div class="stat-number" style="color: #f59e0b;">{in_progress_count}</div>
-        <div style="font-size: 0.875rem; color: #64748b;">milestone</div>
-    </div>
-    """, unsafe_allow_html=True)
+if start_input != st.session_state.contract_start.date():
+    st.session_state.contract_start = datetime.combine(start_input, datetime.min.time())
+    # regenerate default due dates but preserve any existing custom fields by merging
+    base_df = default_milestones(st.session_state.contract_start)
+    old = st.session_state.milestones_df.set_index("id")
+    base_df = base_df.set_index("id")
+    for col in ["deliverables", "owner", "status", "completed_date"]:
+        if col in old.columns:
+            base_df[col] = old[col]
+    base_df = base_df.reset_index()
+    st.session_state.milestones_df = base_df
 
-with col3:
-    upcoming_count = len([m for m in st.session_state.milestones if m['status'] == 'upcoming'])
-    st.markdown(f"""
-    <div class="stat-card" style="border-top: 4px solid #3b82f6;">
-        <div class="stat-label">Sắp tới</div>
-        <div class="stat-number" style="color: #3b82f6;">{upcoming_count}</div>
-        <div style="font-size: 0.875rem; color: #64748b;">milestone</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col4:
-    total_days = max([m['days'] for m in st.session_state.milestones])
-    st.markdown(f"""
-    <div class="stat-card" style="border-top: 4px solid #8b5cf6;">
-        <div class="stat-label">Tổng thời gian</div>
-        <div class="stat-number" style="color: #8b5cf6;">{total_days}</div>
-        <div style="font-size: 0.875rem; color: #64748b;">ngày</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# Timeline visualization
-st.markdown("---")
-st.markdown("### 📊 Biểu đồ Timeline")
-
-# Create Gantt chart
-fig = go.Figure()
-
-for milestone in st.session_state.milestones:
-    status_config = get_status_config(milestone['status'])
-    
-    fig.add_trace(go.Bar(
-        x=[milestone['days']],
-        y=[milestone['name']],
-        orientation='h',
-        name=milestone['name'],
-        marker=dict(
-            color=status_config['color'],
-            line=dict(color=status_config['color'], width=2)
-        ),
-        hovertemplate=f"""
-        <b>{milestone['name']}</b><br>
-        Thời hạn: {milestone['days']} ngày<br>
-        Deadline: {milestone['deadline'].strftime('%d/%m/%Y')}<br>
-        Tiến độ: {milestone['progress']}%<br>
-        <extra></extra>
-        """,
-        showlegend=False
-    ))
-
-fig.update_layout(
-    title="Lịch trình Thực hiện Dự án",
-    xaxis_title="Số ngày kể từ ngày ký hợp đồng",
-    yaxis_title="",
-    height=400,
-    plot_bgcolor='white',
-    paper_bgcolor='white',
-    font=dict(size=12),
-    hovermode='closest'
-)
-
-fig.update_xaxis(showgrid=True, gridwidth=1, gridcolor='#e2e8f0')
-fig.update_yaxis(showgrid=False)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# Milestone cards
-st.markdown("---")
-st.markdown("### 📋 Chi tiết Milestone")
-
-# Filter milestones
-display_milestones = st.session_state.milestones
-if not show_completed:
-    display_milestones = [m for m in display_milestones if m['status'] != 'completed']
-
-for milestone in display_milestones:
-    status_config = get_status_config(milestone['status'])
-    days_remaining = calculate_days_remaining(milestone['deadline'])
-    
-    # Determine urgency color
-    if days_remaining < 0:
-        urgency_color = '#ef4444'
-        urgency_text = f"Quá hạn {abs(days_remaining)} ngày"
-    elif days_remaining < 7:
-        urgency_color = '#f59e0b'
-        urgency_text = f"Còn {days_remaining} ngày"
-    else:
-        urgency_color = '#10b981'
-        urgency_text = f"Còn {days_remaining} ngày"
-    
-    st.markdown(f"""
-    <div class="milestone-card status-{status_config['class']}">
-        <div class="milestone-header">
-            <div style="flex: 1;">
-                <div class="milestone-title">
-                    {status_config['icon']} Milestone {milestone['id']}: {milestone['name']}
-                </div>
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
-                    <span class="status-badge badge-{status_config['class']}">
-                        {status_config['label']}
-                    </span>
-                    <span style="color: #64748b; font-size: 0.875rem;">
-                        📅 Deadline: <strong>{milestone['deadline'].strftime('%d/%m/%Y')}</strong>
-                    </span>
-                    <span style="color: {urgency_color}; font-size: 0.875rem; font-weight: 600;">
-                        ⏰ {urgency_text}
-                    </span>
-                </div>
-            </div>
-            <div class="milestone-days" style="background: {status_config['bg']}; color: {status_config['color']};">
-                {milestone['days']}<br>
-                <span style="font-size: 0.875rem;">ngày</span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Progress bar
-    st.markdown(f"""
-        <div style="margin: 1rem 0;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                <span style="font-weight: 600; color: #334155;">Tiến độ hoàn thành</span>
-                <span style="font-weight: 700; color: {status_config['color']};">{milestone['progress']}%</span>
-            </div>
-            <div class="progress-container">
-                <div class="progress-bar" style="width: {milestone['progress']}%; background: {status_config['color']};">
-                    {milestone['progress']}%
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Contact person
-    contact = milestone['contact_person']
-    st.markdown(f"""
-        <div class="contact-person">
-            <div class="contact-avatar">{contact['name'][0]}</div>
-            <div style="flex: 1;">
-                <div style="font-weight: 700; color: #1e293b; margin-bottom: 0.25rem;">
-                    👤 Đầu mối: {contact['name']}
-                </div>
-                <div style="font-size: 0.875rem; color: #64748b;">
-                    {contact['role']}
-                </div>
-                <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.25rem;">
-                    📞 {contact['phone']} | 📧 {contact['email']}
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Deliverables
-    if show_deliverables:
-        st.markdown("""
-            <div style="margin-top: 1rem;">
-                <div style="font-weight: 700; color: #1e293b; margin-bottom: 0.75rem; font-size: 1.1rem;">
-                    📦 Nội dung Bàn giao:
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        for idx, deliverable in enumerate(milestone['deliverables'], 1):
-            st.markdown(f"""
-            <div class="deliverable-box">
-                <div class="deliverable-title">
-                    {idx}. {deliverable}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Add progress update controls
-    with st.expander("🔧 Cập nhật tiến độ"):
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            new_progress = st.slider(
-                "Điều chỉnh tiến độ",
-                0, 100, milestone['progress'],
-                key=f"progress_{milestone['id']}"
-            )
-        with col2:
-            if st.button("Cập nhật", key=f"update_{milestone['id']}"):
-                milestone['progress'] = new_progress
-                update_milestone_status()
-                st.success("Đã cập nhật!")
-                st.rerun()
-
-# Summary section
-st.markdown("---")
-st.markdown("### 📊 Tổng kết")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("#### 📅 Các Mốc Quan Trọng")
-    for milestone in st.session_state.milestones:
-        status_config = get_status_config(milestone['status'])
-        st.markdown(f"""
-        <div style="background: white; padding: 1rem; margin: 0.5rem 0; border-radius: 0.5rem; 
-                    border-left: 4px solid {status_config['color']}; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <div style="font-weight: 600; color: #1e293b; margin-bottom: 0.25rem;">
-                {status_config['icon']} {milestone['name']}
-            </div>
-            <div style="font-size: 0.875rem; color: #64748b;">
-                📅 {milestone['deadline'].strftime('%d/%m/%Y')} ({milestone['days']} ngày)
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown("#### 📈 Biểu đồ Tiến độ")
-    
-    # Progress pie chart
-    progress_data = {
-        'Trạng thái': [],
-        'Số lượng': []
+st.sidebar.markdown("---")
+if st.sidebar.button("Thêm milestone mẫu (ví dụ)"):
+    df = st.session_state.milestones_df
+    new_id = int(df["id"].max()) + 1
+    new_row = {
+        "id": new_id,
+        "milestone": f"Milestone bổ sung {new_id}",
+        "days_from_start": 30,
+        "due_date": st.session_state.contract_start + timedelta(days=30),
+        "deliverables": "",
+        "owner": "",
+        "status": "Not Started",
+        "completed_date": pd.NaT,
     }
-    
-    status_counts = {}
-    for milestone in st.session_state.milestones:
-        status = get_status_config(milestone['status'])['label']
-        status_counts[status] = status_counts.get(status, 0) + 1
-    
-    for status, count in status_counts.items():
-        progress_data['Trạng thái'].append(status)
-        progress_data['Số lượng'].append(count)
-    
-    df_progress = pd.DataFrame(progress_data)
-    
-    fig_pie = px.pie(
-        df_progress,
-        values='Số lượng',
-        names='Trạng thái',
-        color='Trạng thái',
-        color_discrete_map={
-            'Hoàn thành': '#10b981',
-            'Đang thực hiện': '#f59e0b',
-            'Sắp tới': '#3b82f6',
-            'Quá hạn': '#ef4444'
-        }
-    )
-    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-    fig_pie.update_layout(height=300, showlegend=True)
-    
-    st.plotly_chart(fig_pie, use_container_width=True)
+    st.session_state.milestones_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-# Footer
+st.sidebar.markdown("---")
+if st.sidebar.button("Reset về mặc định"):
+    st.session_state.milestones_df = default_milestones(st.session_state.contract_start)
+    st.session_state.milestones_df["completed_date"] = pd.NaT
+
+st.sidebar.markdown("\n\nExport / Import")
+if st.sidebar.download_button("Tải CSV hiện tại", st.session_state.milestones_df.to_csv(index=False), file_name="milestones.csv"):
+    pass
+
+uploaded = st.sidebar.file_uploader("Import CSV (milestones) để cập nhật", type=["csv"]) 
+if uploaded is not None:
+    try:
+        df_up = pd.read_csv(uploaded, parse_dates=["due_date", "completed_date"], dayfirst=True)
+        st.session_state.milestones_df = df_up
+        st.sidebar.success("Import thành công")
+    except Exception as e:
+        st.sidebar.error(f"Lỗi khi import: {e}")
+
+# ---------- Main layout ----------
+st.title("VNA Private Cloud — Milestone Manager (Streamlit)")
+st.markdown("Ứng dụng đơn giản để quản lý các milestone chính, giao nhiệm vụ, và theo dõi tiến độ dự án.")
+
+col1, col2 = st.columns((2, 3))
+
+with col1:
+    st.subheader("Danh sách Milestone")
+    df = st.session_state.milestones_df.copy()
+    # compute dynamic status
+    today = datetime.now()
+    df["status_dynamic"] = df.apply(lambda r: compute_status(r, today=today) if pd.isna(r.get("completed_date")) else "Completed", axis=1)
+
+    # interactive edit per row
+    for i, row in df.iterrows():
+        exp = st.expander(f"{row['milestone']} — Hạn: {row['due_date'].date()} — Trạng thái: {row['status_dynamic']}")
+        with exp:
+            c1, c2 = st.columns([3, 2])
+            with c1:
+                new_m = st.text_input(f"Tiêu đề {row['id']}", value=row['milestone'], key=f"m_{row['id']}")
+                new_d = st.text_area(f"Deliverables {row['id']}", value=row['deliverables'], key=f"d_{row['id']}")
+            with c2:
+                new_owner = st.text_input(f"Owner {row['id']}", value=row['owner'], key=f"o_{row['id']}")
+                new_due = st.date_input(f"Due date {row['id']}", value=row['due_date'].date(), key=f"due_{row['id']}")
+                status_sel = st.selectbox(f"Trạng thái {row['id']}", options=["Not Started","On Track","At Risk","Delayed","Completed"], index=0, key=f"s_{row['id']}")
+                if status_sel == "Completed":
+                    comp_date = st.date_input(f"Ngày hoàn thành {row['id']}", value=(row['completed_date'].date() if pd.notna(row['completed_date']) else today.date()), key=f"c_{row['id']}")
+                else:
+                    comp_date = None
+            # apply changes back to session_state
+            st.session_state.milestones_df.loc[st.session_state.milestones_df['id'] == row['id'], 'milestone'] = new_m
+            st.session_state.milestones_df.loc[st.session_state.milestones_df['id'] == row['id'], 'deliverables'] = new_d
+            st.session_state.milestones_df.loc[st.session_state.milestones_df['id'] == row['id'], 'owner'] = new_owner
+            st.session_state.milestones_df.loc[st.session_state.milestones_df['id'] == row['id'], 'due_date'] = pd.to_datetime(new_due)
+            st.session_state.milestones_df.loc[st.session_state.milestones_df['id'] == row['id'], 'status'] = status_sel
+            if comp_date:
+                st.session_state.milestones_df.loc[st.session_state.milestones_df['id'] == row['id'], 'completed_date'] = pd.to_datetime(comp_date)
+            else:
+                st.session_state.milestones_df.loc[st.session_state.milestones_df['id'] == row['id'], 'completed_date'] = pd.NaT
+
+    st.markdown("---")
+    if st.button("Thêm Milestone mới ở cuối"):
+        df2 = st.session_state.milestones_df
+        new_id = int(df2['id'].max()) + 1
+        new_row = {
+            'id': new_id,
+            'milestone': f'New milestone {new_id}',
+            'days_from_start': 0,
+            'due_date': datetime.now(),
+            'deliverables': '',
+            'owner': '',
+            'status': 'Not Started',
+            'completed_date': pd.NaT,
+        }
+        st.session_state.milestones_df = pd.concat([df2, pd.DataFrame([new_row])], ignore_index=True)
+        st.experimental_rerun()
+
+with col2:
+    st.subheader("Gantt / Timeline")
+    gantt_df = st.session_state.milestones_df.copy()
+    gantt_df['start'] = pd.to_datetime(st.session_state.contract_start)
+    gantt_df['finish'] = pd.to_datetime(gantt_df['due_date'])
+    gantt_df['status_dynamic'] = gantt_df.apply(lambda r: compute_status(r, today=today) if pd.isna(r.get('completed_date')) else 'Completed', axis=1)
+    color_map = {s: status_color_map(s) for s in gantt_df['status_dynamic'].unique()}
+
+    fig = px.timeline(
+        gantt_df,
+        x_start='start',
+        x_end='finish',
+        y='milestone',
+        color='status_dynamic',
+        hover_data=['deliverables', 'owner'],
+        color_discrete_map=color_map,
+    )
+    fig.update_yaxes(autorange="reversed")
+    fig.update_layout(height=400, margin=dict(l=20, r=20, t=30, b=20))
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Bảng tóm tắt")
+    summary = st.session_state.milestones_df.copy()
+    summary['due_date'] = pd.to_datetime(summary['due_date']).dt.date
+    summary['completed_date'] = pd.to_datetime(summary['completed_date']).dt.date
+    summary['status_dynamic'] = summary.apply(lambda r: compute_status(r, today=today) if pd.isna(r.get('completed_date')) else 'Completed', axis=1)
+    st.dataframe(summary[['id','milestone','owner','due_date','completed_date','status_dynamic','deliverables']])
+
+# ---------- Footer / Help ----------
 st.markdown("---")
-st.markdown("""
-<div style="text-align: center; padding: 2rem; background: #f8fafc; border-radius: 1rem; margin-top: 2rem;">
-    <p style="margin: 0; color: #64748b; font-size: 0.875rem;">
-        💼 <strong>Công cụ Quản lý Tiến độ Dự án</strong>
-    </p>
-    <p style="margin: 0.5rem 0 0 0; color: #94a3b8; font-size: 0.75rem;">
-        Theo dõi milestone, deliverable và đầu mối một cách trực quan | Powered by Streamlit
-    </p>
-</div>
-""", unsafe_allow_html=True)
+st.caption("Hướng dẫn: Thay đổi ngày ký hợp đồng ở thanh bên để cập nhật mốc thời hạn. Sử dụng nút export để tải CSV. Triển khai nhanh trên Streamlit Cloud hoặc chạy local bằng `streamlit run`.")
+
+
+# End of file
